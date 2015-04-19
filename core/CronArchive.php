@@ -78,7 +78,6 @@ class CronArchive
     private $websites = array();
     private $allWebsites = array();
     private $segments = array();
-    private $piwikUrl = false;
     private $token_auth = false;
     private $validTokenAuths = array();
     private $visitsToday = 0;
@@ -221,7 +220,7 @@ class CronArchive
      * Constructor.
      *
      * @param string|false $piwikUrl The URL to the Piwik installation to initiate archiving for. If `false`,
-     *                               we determine it using the current request information.
+     *                               we determine it using the current request information. TODO: remove this param
      *
      *                               If invoked via the command line, $piwikUrl cannot be false.
      * @param string|null $processNewSegmentsFrom When to archive new segments from. See [General] process_new_segments_from
@@ -231,7 +230,6 @@ class CronArchive
     {
         $this->formatter = new Formatter();
 
-        $this->initPiwikHost($piwikUrl);
         $this->initCore();
         $this->initTokenAuth();
 
@@ -259,7 +257,6 @@ class CronArchive
         $this->initStateFromParameters();
 
         $this->logInitInfo();
-        $this->checkPiwikUrlIsValid();
         $this->logArchiveTimeoutInfo();
 
         // record archiving start time
@@ -296,15 +293,6 @@ class CronArchive
          *                          already been processed.
          */
         Piwik::postEvent('CronArchive.init.finish', array($this->websites->getInitialSiteIds()));
-    }
-
-    public function runScheduledTasksInTrackerMode()
-    {
-        $this->initCore();
-        $this->initTokenAuth();
-        $this->logInitInfo();
-        $this->checkPiwikUrlIsValid();
-        $this->runScheduledTasks();
     }
 
     /**
@@ -593,29 +581,6 @@ class CronArchive
             $success = $periodArchiveWasSuccessful && $success;
         }
         return $success;
-    }
-
-    /**
-     * Checks the config file is found.
-     *
-     * @param $piwikUrl
-     * @throws Exception
-     */
-    protected function initConfigObject($piwikUrl)
-    {
-        // HOST is required for the Config object
-        $parsed = parse_url($piwikUrl);
-        Url::setHost($parsed['host']);
-
-        Config::getInstance()->clear();
-
-        try {
-            Config::getInstance()->checkLocalConfigFound();
-        } catch (Exception $e) {
-            throw new Exception("The configuration file for Piwik could not be found. " .
-                "Please check that config/config.ini.php is readable by the user " .
-                get_current_user());
-        }
     }
 
     /**
@@ -1048,52 +1013,6 @@ class CronArchive
         return in_array($token_auth, $this->validTokenAuths);
     }
 
-    /**
-     * @param string|bool $piwikUrl
-     */
-    protected function initPiwikHost($piwikUrl = false)
-    {
-        // If core:archive command run as a web cron, we use the current hostname+path
-        if (empty($piwikUrl)) {
-            if (!empty(self::$url)) {
-                $piwikUrl = self::$url;
-            } else {
-                // example.org/piwik/
-                $piwikUrl = SettingsPiwik::getPiwikUrl();
-            }
-        }
-
-        if (!$piwikUrl) {
-            $this->logFatalErrorUrlExpected();
-        }
-
-        if (!\Piwik\UrlHelper::isLookLikeUrl($piwikUrl)) {
-            // try adding http:// in case it's missing
-            $piwikUrl = "http://" . $piwikUrl;
-        }
-
-        if (!\Piwik\UrlHelper::isLookLikeUrl($piwikUrl)) {
-            $this->logFatalErrorUrlExpected($piwikUrl);
-        }
-
-        // ensure there is a trailing slash
-        if ($piwikUrl[strlen($piwikUrl) - 1] != '/' && !Common::stringEndsWith($piwikUrl, 'index.php')) {
-            $piwikUrl .= '/';
-        }
-
-        $this->initConfigObject($piwikUrl);
-
-        if (Config::getInstance()->General['force_ssl'] == 1) {
-            $piwikUrl = str_replace('http://', 'https://', $piwikUrl);
-        }
-
-        if (!Common::stringEndsWith($piwikUrl, 'index.php')) {
-            $piwikUrl .= 'index.php';
-        }
-
-        $this->piwikUrl = $piwikUrl;
-    }
-
     private function updateIdSitesInvalidatedOldReports()
     {
         $store = new SitesToReprocessDistributedList();
@@ -1200,24 +1119,11 @@ class CronArchive
         return $websiteDayHasFinishedSinceLastRun;
     }
 
-    /**
-     *  Test that the specified piwik URL is a valid Piwik endpoint.
-     */
-    protected function checkPiwikUrlIsValid()
-    {
-        $response = $this->request("?module=API&method=API.getDefaultMetricTranslations&format=original&serialize=1");
-        $responseUnserialized = @unserialize($response);
-        if ($response === false
-            || !is_array($responseUnserialized)
-        ) {
-            $this->logFatalError("The Piwik URL {$this->piwikUrl} does not seem to be pointing to a Piwik server. Response was '$response'.");
-        }
-    }
+    // TODO: test archiving w/ curl (no climulti processes) when piwik host is unreachable, is there a useful error message?
 
     private function logInitInfo()
     {
         $this->logSection("INIT");
-        $this->log("Piwik is installed at: {$this->piwikUrl}");
         $this->log("Running Piwik " . Version::VERSION . " as Super User");
     }
 
@@ -1280,13 +1186,6 @@ class CronArchive
         }
 
         return true;
-    }
-
-    private function logFatalErrorUrlExpected($piwikUrl = false)
-    {
-        $this->logFatalError("./console core:archive expects the argument 'url' to be set to your Piwik URL, for example: --url=http://example.org/piwik/"
-            . ($piwikUrl ? "\n '$piwikUrl' supplied" : "")
-            . "\nuse --help for more information");
     }
 
     private function getVisitsLastPeriodFromApiResponse($stats)
@@ -1560,7 +1459,7 @@ class CronArchive
      */
     private function makeRequestUrl($url)
     {
-        return $this->piwikUrl . $url . self::APPEND_TO_API_REQUEST;
+        return $url . self::APPEND_TO_API_REQUEST;
     }
 
     public static function getSuperUserTokenAuths()
