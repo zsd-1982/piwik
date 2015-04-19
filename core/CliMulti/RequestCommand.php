@@ -42,6 +42,7 @@ class RequestCommand extends ConsoleCommand
             require_once PIWIK_INCLUDE_PATH . '/tests/PHPUnit/TestingEnvironment.php';
 
             Config::unsetInstance();
+            StaticContainer::clearContainer();
             \Piwik_TestingEnvironment::addHooks();
 
             $indexFile = '/tests/PHPUnit/proxy/';
@@ -86,7 +87,7 @@ class RequestCommand extends ConsoleCommand
         Url::setHost($hostname);
 
         $query = $input->getArgument('url-query');
-        $query = UrlHelper::getArrayFromQueryString($query);
+        $query = UrlHelper::getArrayFromQueryString($query); // NOTE: this method can create the StaticContainer now
         foreach ($query as $name => $value) {
             $_GET[$name] = $value;
         }
