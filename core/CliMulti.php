@@ -269,7 +269,7 @@ class CliMulti {
         }
 
         if ($this->runAsSuperUser) {
-            $tokenAuths = CronArchive::getSuperUserTokenAuths();
+            $tokenAuths = self::getSuperUserTokenAuths();
             $tokenAuth = reset($tokenAuths);
 
             if (strpos($url, '?') === false) {
@@ -331,5 +331,19 @@ class CliMulti {
         self::cleanupNotRemovedFiles();
 
         return $results;
+    }
+
+    public static function getSuperUserTokenAuths()
+    {
+        $tokens = array();
+
+        /**
+         * Used to be in CronArchive, moved to CliMulti.
+         * 
+         * @ignore
+         */
+        Piwik::postEvent('CronArchive.getTokenAuth', array(&$tokens));
+
+        return $tokens;
     }
 }

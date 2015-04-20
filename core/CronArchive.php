@@ -78,8 +78,6 @@ class CronArchive
     private $websites = array();
     private $allWebsites = array();
     private $segments = array();
-    private $token_auth = false;
-    private $validTokenAuths = array();
     private $visitsToday = 0;
     private $requests = 0;
     private $output = '';
@@ -229,8 +227,6 @@ class CronArchive
     public function __construct($piwikUrl = false, $processNewSegmentsFrom = null)
     {
         $this->formatter = new Formatter();
-
-        $this->initTokenAuth();
 
         $processNewSegmentsFrom = $processNewSegmentsFrom ?: StaticContainer::get('ini.General.process_new_segments_from');
         $this->segmentArchivingRequestUrlProvider = new SegmentArchivingRequestUrlProvider($processNewSegmentsFrom);
@@ -977,16 +973,6 @@ class CronArchive
         return array_unique($websiteIds);
     }
 
-    public function initTokenAuth()
-    {
-        $tokens = self::getSuperUserTokenAuths();
-
-        $this->validTokenAuths = $tokens;
-        $this->token_auth = array_shift($tokens);
-
-        return $this->token_auth;
-    }
-
     private function updateIdSitesInvalidatedOldReports()
     {
         $store = new SitesToReprocessDistributedList();
@@ -1434,18 +1420,6 @@ class CronArchive
     private function makeRequestUrl($url)
     {
         return $url . self::APPEND_TO_API_REQUEST;
-    }
-
-    public static function getSuperUserTokenAuths() // TODO: move this to CliMulti
-    {
-        $tokens = array();
-
-        /**
-         * @ignore
-         */
-        Piwik::postEvent('CronArchive.getTokenAuth', array(&$tokens));
-
-        return $tokens;
     }
 
     /**
