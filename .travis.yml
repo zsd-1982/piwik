@@ -93,8 +93,6 @@ install:
   - git checkout master -q -- ./tests/travis ./plugins/TestRunner || true
 
 before_script:
-  - ./tests/travis/install_mysql_5.6.sh
-
   - phpenv config-rm xdebug.ini;
 
   # add always_populate_raw_post_data=-1 to php.ini

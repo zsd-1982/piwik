@@ -122,8 +122,6 @@ before_script:
 {% if customTravisBuildSteps.before_script.before|default is not empty %}{{ customTravisBuildSteps.before_script.before|raw }}
 
 {% endif %}
-  - ./tests/travis/install_mysql_5.6.sh
-
   - phpenv config-rm xdebug.ini;
 
   # add always_populate_raw_post_data=-1 to php.ini
