@@ -138,9 +138,6 @@ before_script:
 
   - cd tests/PHPUnit
 
-  - mysql -e 'SHOW DATABASES;'
-  - cat $PIWIK_ROOT_DIR/config/config.ini.php
-
 after_script:
   # change directory back to root travis dir
   - cd $PIWIK_ROOT_DIR
