@@ -133,9 +133,6 @@ before_script:
   - ./tests/travis/prepare.sh
   - ./tests/travis/setup_webserver.sh
 
-  - mysql -e 'SHOW DATABASES;'
-  - cat $PIWIK_ROOT_DIR/config/config.ini.php
-
   - export GENERATE_TRAVIS_YML_COMMAND="php ./console generate:travis-yml --core --verbose"
   - ./tests/travis/autoupdate_travis_yml.sh
 
