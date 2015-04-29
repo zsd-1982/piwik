@@ -213,30 +213,58 @@ class Request
         $corsHandler = new CORSHandler();
         $corsHandler->handle();
 
+        $tokenAuth = Common::getRequestVar('token_auth', '', 'string', $this->request);
+        $didReloadAuth = false;
+
         try {
             // read parameters
             $moduleMethod = Common::getRequestVar('method', null, 'string', $this->request);
 
             list($module, $method) = $this->extractModuleAndMethod($moduleMethod);
-
             list($module, $method) = self::getRenamedModuleAndAction($module, $method);
             
             PluginManager::getInstance()->checkIsPluginActivated($module);
 
             $apiClassName = self::getClassNameAPI($module);
 
-            self::reloadAuthUsingTokenAuth($this->request);
+            if (self::shouldReloadAuthUsingTokenAuth($tokenAuth)) {
+                $didReloadAuth = true;
+                $access = Access::getInstance();
+                $tokenAuthToRestore = $access->getTokenAuth();
+                $hadSuperUserAccess = $access->hasSuperUserAccess();
+                self::doReloadAuthUsingTokenAuth($tokenAuth);
+            }
 
             // call the method
             $returnedValue = Proxy::getInstance()->call($apiClassName, $method, $this->request);
 
             $toReturn = $response->getResponse($returnedValue, $module, $method);
+
         } catch (Exception $e) {
             Log::debug($e);
 
             $toReturn = $response->getResponseException($e);
         }
+
+        if ($didReloadAuth) {
+            $this->restoreAuthUsingTokenAuth($tokenAuthToRestore, $hadSuperUserAccess);
+        }
+
         return $toReturn;
+    }
+
+    private function restoreAuthUsingTokenAuth($tokenToRestore, $hadSuperUserAccess)
+    {
+        Access::getInstance()->setSuperUserAccess(false);
+
+        // we need to restore by reloading the tokenAuth as some permissions could have been removed in the API
+        // request etc. Otherwise we could just store a clone of Access::getInstance() and restore here
+        self::doReloadAuthUsingTokenAuth($tokenToRestore);
+
+        if ($hadSuperUserAccess && !Access::getInstance()->hasSuperUserAccess()) {
+            // we are in context of `doAsSuperUser()` and need to restore this behaviour
+            Access::getInstance()->setSuperUserAccess(true);
+        }
     }
 
     /**
@@ -263,24 +291,39 @@ class Request
     {
         // if a token_auth is specified in the API request, we load the right permissions
         $token_auth = Common::getRequestVar('token_auth', '', 'string', $request);
-        $access = Access::getInstance();
 
-        if ($token_auth && $token_auth !== $access->getTokenAuth()) {
-
-            /**
-             * Triggered when authenticating an API request, but only if the **token_auth**
-             * query parameter is found in the request.
-             *
-             * Plugins that provide authentication capabilities should subscribe to this event
-             * and make sure the global authentication object (the object returned by `StaticContainer::get('Piwik\Auth')`)
-             * is setup to use `$token_auth` when its `authenticate()` method is executed.
-             *
-             * @param string $token_auth The value of the **token_auth** query parameter.
-             */
-            Piwik::postEvent('API.Request.authenticate', array($token_auth));
-            Access::getInstance()->reloadAccess();
-            SettingsServer::raiseMemoryLimitIfNecessary();
+        if (self::shouldReloadAuthUsingTokenAuth($token_auth)) {
+            self::doReloadAuthUsingTokenAuth($token_auth);
         }
+    }
+
+    /**
+     * The current session will be authenticated using this token_auth.
+     * It will overwrite the previous Auth object.
+     *
+     * @param string $tokenAuth
+     * @return void
+     */
+    private static function doReloadAuthUsingTokenAuth($tokenAuth)
+    {
+        /**
+         * Triggered when authenticating an API request, but only if the **token_auth**
+         * query parameter is found in the request.
+         *
+         * Plugins that provide authentication capabilities should subscribe to this event
+         * and make sure the global authentication object (the object returned by `StaticContainer::get('Piwik\Auth')`)
+         * is setup to use `$token_auth` when its `authenticate()` method is executed.
+         *
+         * @param string $token_auth The value of the **token_auth** query parameter.
+         */
+        Piwik::postEvent('API.Request.authenticate', array($tokenAuth));
+        Access::getInstance()->reloadAccess();
+        SettingsServer::raiseMemoryLimitIfNecessary();
+    }
+
+    private static function shouldReloadAuthUsingTokenAuth($tokenAuth)
+    {
+        return $tokenAuth != Access::getInstance()->getTokenAuth();
     }
 
     /**
